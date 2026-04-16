@@ -3,61 +3,116 @@
   <head>
     <meta charset="UTF-8" />
     <title>CleanCity - Lapor Sampah</title>
+
     <link
       href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
       rel="stylesheet"
     />
+
+    <!-- Leaflet CSS -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+
+    <style>
+      body {
+        background: linear-gradient(135deg, #e0f7fa, #f1f8e9);
+      }
+
+      #map {
+        height: 300px;
+        border-radius: 10px;
+        margin-bottom: 15px;
+      }
+
+      .card {
+        border-radius: 15px;
+        transition: 0.3s;
+      }
+
+      .card:hover {
+        transform: translateY(-5px);
+      }
+
+      .card-img-top {
+        height: 200px;
+        object-fit: cover;
+      }
+    </style>
   </head>
 
-  <body class="bg-light">
-    <div class="container mt-5">
-      <h2 class="text-center mb-4">🌍 CleanCity: Lapor Sampah Liar</h2>
+  <body>
+    <div class="container py-5">
+      <h2 class="text-center mb-4">🌍 CleanCity</h2>
 
       <!-- FORM -->
-      <div class="card p-4 shadow-sm mb-5">
+      <div class="card p-4 shadow mb-5">
         <form id="formLaporan">
+          <input type="hidden" name="lat" id="lat" />
+          <input type="hidden" name="lng" id="lng" />
+
           <div class="mb-3">
-            <label class="form-label">Judul Laporan</label>
+            <label>Judul</label>
             <input type="text" name="judul" class="form-control" required />
           </div>
 
           <div class="mb-3">
-            <label class="form-label">Deskripsi</label>
+            <label>Deskripsi</label>
             <textarea name="deskripsi" class="form-control"></textarea>
           </div>
 
           <div class="mb-3">
-            <label class="form-label">Lokasi</label>
+            <label>Alamat (opsional)</label>
             <input type="text" name="lokasi" class="form-control" />
           </div>
 
+          <label class="mb-2">📍 Pilih lokasi di peta</label>
+          <div id="map"></div>
+
           <div class="mb-3">
-            <label class="form-label">Foto Sampah</label>
-            <input
-              type="file"
-              name="foto"
-              class="form-control"
-              accept="image/*"
-              required
-            />
+            <label>Foto</label>
+            <input type="file" name="foto" class="form-control" required />
           </div>
 
-          <button type="submit" class="btn btn-success w-100">
-            Kirim Laporan
-          </button>
+          <button class="btn btn-success w-100">🚀 Kirim</button>
         </form>
       </div>
 
-      <!-- LIST LAPORAN -->
-      <h4 class="mb-3">📋 Daftar Laporan</h4>
+      <!-- LIST -->
+      <h4>📋 Laporan</h4>
       <div id="listLaporan" class="row"></div>
     </div>
 
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
     <script>
+      const map = L.map("map").setView([-6.9, 107.6], 13); // Bandung
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "© OpenStreetMap",
+      }).addTo(map);
+
+      let marker;
+
+      map.on("click", function (e) {
+        const { lat, lng } = e.latlng;
+
+        document.getElementById("lat").value = lat;
+        document.getElementById("lng").value = lng;
+
+        if (marker) {
+          marker.setLatLng(e.latlng);
+        } else {
+          marker = L.marker(e.latlng).addTo(map);
+        }
+      });
+
+      // SUBMIT
       const form = document.getElementById("formLaporan");
       const list = document.getElementById("listLaporan");
 
-      // SUBMIT FORM
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
 
@@ -83,17 +138,19 @@
         data.forEach((item) => {
           list.innerHTML += `
             <div class="col-md-4 mb-4">
-              <div class="card shadow-sm">
+              <div class="card">
                 ${
                   item.foto_url
-                    ? `<img src="${item.foto_url}" class="card-img-top" style="height:200px; object-fit:cover;">`
+                    ? `<img src="${item.foto_url}" class="card-img-top">`
                     : ""
                 }
                 <div class="card-body">
                   <h5>${item.judul}</h5>
                   <p>${item.deskripsi || "-"}</p>
                   <small>📍 ${item.lokasi || "-"}</small><br>
-                  <span class="badge bg-warning mt-2">${item.status}</span>
+                  ${
+                    item.lat ? `<small>🌐 ${item.lat}, ${item.lng}</small>` : ""
+                  }
                 </div>
               </div>
             </div>
@@ -101,7 +158,6 @@
         });
       }
 
-      // LOAD SAAT PAGE DIBUKA
       loadData();
     </script>
   </body>

@@ -66,7 +66,7 @@ app.get("/api/laporan", (req, res) => {
 app.post("/api/laporan", upload.single("foto"), (req, res) => {
   console.log("📥 Request masuk /api/laporan");
 
-  const { judul, deskripsi, lokasi } = req.body;
+  const { judul, deskripsi, lokasi, lat, lng } = req.body;
   const file = req.file;
 
   if (!file) {
@@ -96,7 +96,7 @@ app.post("/api/laporan", upload.single("foto"), (req, res) => {
     console.log("✅ S3 OK:", fotoUrl);
 
     const sql =
-      "INSERT INTO laporan (judul, deskripsi, lokasi, foto_url, status) VALUES (?, ?, ?, ?, 'pending')";
+      "INSERT INTO laporan (judul, deskripsi, lokasi, lat, lng, foto_url, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')";
 
     db.query(sql, [judul, deskripsi, lokasi, fotoUrl], (err) => {
       if (err) {
