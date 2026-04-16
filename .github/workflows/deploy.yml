@@ -1,24 +1,27 @@
 name: Deploy to EC2
+
 on:
   push:
     branches: [main]
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
 
-      - name: SSH and Deploy
-        uses: appleboy/ssh-action@master
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: 3.27.151.73
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd cleancity
+            cd ~/cleancity
+
             git pull origin main
-            npm install
-            /usr/local/bin/pm2 delete cleancity || true
-            /usr/local/bin/pm2 start app.js --name "cleancity"
-            /usr/local/bin/pm2 save
+
+            docker rm -f app || true
+
+            docker build --no-cache -t cleancity .
+
+            docker run -d -p 3000:3000 --env-file .env --name app cleancity
