@@ -3,10 +3,13 @@ const mysql = require("mysql2");
 const multer = require("multer");
 const AWS = require("aws-sdk");
 const path = require("path");
+require("dotenv").config();
 
 const app = express();
 
-// Middleware
+/* =========================
+   MIDDLEWARE
+========================= */
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, "public")));
@@ -14,9 +17,8 @@ app.use(express.static(path.join(__dirname, "public")));
 const upload = multer({ storage: multer.memoryStorage() });
 
 /* =========================
-   CONFIG AWS S3
+   CONFIG S3 (NO ACL)
 ========================= */
-require("dotenv").config();
 const s3 = new AWS.S3({
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
@@ -24,80 +26,96 @@ const s3 = new AWS.S3({
 });
 
 /* =========================
-   KONEKSI RDS
+   KONEKSI RDS (POOL)
 ========================= */
-const db = mysql.createConnection({
-  host: "cleancity-db.cbyyk0kkin4o.ap-southeast-2.rds.amazonaws.com",
-  user: "rikki",
-  password: "itenas123456",
-  database: "cleancity",
+const db = mysql.createPool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASS,
+  database: process.env.DB_NAME,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
 });
 
-db.connect((err) => {
+db.getConnection((err, conn) => {
   if (err) {
     console.error("❌ Koneksi RDS gagal:", err);
   } else {
     console.log("✅ Koneksi RDS berhasil 🚀");
+    conn.release();
   }
 });
 
 /* =========================
-   API ROUTES
+   API
 ========================= */
 
-// GET: Ambil laporan
+// GET semua laporan
 app.get("/api/laporan", (req, res) => {
   db.query("SELECT * FROM laporan ORDER BY created_at DESC", (err, result) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) {
+      console.error("❌ DB Error:", err);
+      return res.status(500).json({ error: err.message });
+    }
     res.json(result);
   });
 });
 
-// POST: Upload ke S3 + Insert ke RDS
+// POST upload + simpan
 app.post("/api/laporan", upload.single("foto"), (req, res) => {
-  console.log("DEBUG: Menerima request POST /api/laporan");
+  console.log("📥 Request masuk /api/laporan");
 
   const { judul, deskripsi, lokasi } = req.body;
   const file = req.file;
 
   if (!file) {
-    console.log("❌ Upload Gagal: File tidak ditemukan");
     return res.status(400).send("File foto wajib diunggah!");
   }
 
+  const fileName = Date.now() + "-" + file.originalname;
+
   const params = {
     Bucket: "cleancity-bucket-unik123",
-    Key: Date.now() + "-" + file.originalname,
+    Key: fileName,
     Body: file.buffer,
     ContentType: file.mimetype,
-    ACL: "public-read", // Memastikan file bisa diakses publik
   };
 
-  console.log("DEBUG: Memulai proses upload ke S3...");
-  s3.upload(params, (err, data) => {
+  console.log("⬆️ Upload ke S3...");
+
+  // TANPA ACL (WAJIB)
+  s3.putObject(params, (err) => {
     if (err) {
-      console.error("❌ S3 Upload Error:", err);
+      console.error("❌ S3 Error:", err);
       return res.status(500).send("Gagal upload ke S3: " + err.message);
     }
 
-    console.log("✅ Berhasil upload ke S3. URL:", data.Location);
+    const fotoUrl = `https://${params.Bucket}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileName}`;
 
-    const fotoUrl = data.Location;
+    console.log("✅ S3 OK:", fotoUrl);
+
     const sql =
       "INSERT INTO laporan (judul, deskripsi, lokasi, foto_url, status) VALUES (?, ?, ?, ?, 'pending')";
 
     db.query(sql, [judul, deskripsi, lokasi, fotoUrl], (err) => {
       if (err) {
-        console.error("❌ RDS Insert Error:", err);
+        console.error("❌ DB Error:", err);
         return res.status(500).send("Gagal simpan ke database");
       }
-      console.log("✅ Data berhasil disimpan ke RDS");
+
+      console.log("✅ Data masuk DB");
       res.send("Laporan berhasil dikirim 🚀");
     });
   });
 });
 
+/* =========================
+   RUN SERVER (DOCKER FIX)
+========================= */
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server jalan di http://localhost:${PORT}`);
+
+// WAJIB 0.0.0.0 untuk Docker
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server jalan di port ${PORT}`);
 });
