@@ -1,15 +1,4 @@
-name: Deploy to EC2
-on:
-  push:
-    branches: [main]
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: SSH and Deploy
+- name: SSH and Deploy
         uses: appleboy/ssh-action@master
         with:
           host: 3.27.151.73
@@ -19,4 +8,7 @@ jobs:
             cd cleancity
             git pull origin main
             npm install
-            /usr/local/bin/pm2 restart cleancity
+            # Jika proses ada, restart. Jika tidak ada, jalankan aplikasi.
+            /usr/local/bin/pm2 delete cleancity || true
+            /usr/local/bin/pm2 start app.js --name "cleancity"
+            /usr/local/bin/pm2 save
