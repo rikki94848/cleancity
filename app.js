@@ -17,7 +17,7 @@ app.use(express.static(path.join(__dirname, "public")));
 const upload = multer({ storage: multer.memoryStorage() });
 
 /* =========================
-   CONFIG S3 (NO ACL)
+   CONFIG S3
 ========================= */
 const s3 = new AWS.S3({
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -26,7 +26,7 @@ const s3 = new AWS.S3({
 });
 
 /* =========================
-   KONEKSI RDS (POOL)
+   KONEKSI RDS
 ========================= */
 const db = mysql.createPool({
   host: process.env.DB_HOST,
@@ -35,7 +35,6 @@ const db = mysql.createPool({
   database: process.env.DB_NAME,
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0,
 });
 
 db.getConnection((err, conn) => {
@@ -51,7 +50,7 @@ db.getConnection((err, conn) => {
    API
 ========================= */
 
-// GET semua laporan
+// GET laporan
 app.get("/api/laporan", (req, res) => {
   db.query("SELECT * FROM laporan ORDER BY created_at DESC", (err, result) => {
     if (err) {
@@ -62,11 +61,15 @@ app.get("/api/laporan", (req, res) => {
   });
 });
 
-// POST upload + simpan
+// POST laporan
 app.post("/api/laporan", upload.single("foto"), (req, res) => {
   console.log("📥 Request masuk /api/laporan");
 
   const { judul, deskripsi, lokasi, lat, lng } = req.body;
+
+  const latVal = lat ? parseFloat(lat) : null;
+  const lngVal = lng ? parseFloat(lng) : null;
+
   const file = req.file;
 
   if (!file) {
@@ -84,7 +87,6 @@ app.post("/api/laporan", upload.single("foto"), (req, res) => {
 
   console.log("⬆️ Upload ke S3...");
 
-  // TANPA ACL (WAJIB)
   s3.putObject(params, (err) => {
     if (err) {
       console.error("❌ S3 Error:", err);
@@ -95,27 +97,33 @@ app.post("/api/laporan", upload.single("foto"), (req, res) => {
 
     console.log("✅ S3 OK:", fotoUrl);
 
-    const sql =
-      "INSERT INTO laporan (judul, deskripsi, lokasi, lat, lng, foto_url, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')";
+    const sql = `
+      INSERT INTO laporan 
+      (judul, deskripsi, lokasi, lat, lng, foto_url, status) 
+      VALUES (?, ?, ?, ?, ?, ?, 'pending')
+    `;
 
-    db.query(sql, [judul, deskripsi, lokasi, fotoUrl], (err) => {
-      if (err) {
-        console.error("❌ DB Error:", err);
-        return res.status(500).send("Gagal simpan ke database");
-      }
+    db.query(
+      sql,
+      [judul, deskripsi, lokasi, latVal, lngVal, fotoUrl],
+      (err) => {
+        if (err) {
+          console.error("❌ DB Error:", err);
+          return res.status(500).send("Gagal simpan ke database");
+        }
 
-      console.log("✅ Data masuk DB");
-      res.send("Laporan berhasil dikirim 🚀");
-    });
+        console.log("✅ Data masuk DB");
+        res.send("Laporan berhasil dikirim 🚀");
+      },
+    );
   });
 });
 
 /* =========================
-   RUN SERVER (DOCKER FIX)
+   RUN SERVER
 ========================= */
 const PORT = process.env.PORT || 3000;
 
-// WAJIB 0.0.0.0 untuk Docker
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server jalan di port ${PORT}`);
 });
