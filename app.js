@@ -2,24 +2,25 @@ const express = require("express");
 const mysql = require("mysql2");
 const multer = require("multer");
 const AWS = require("aws-sdk");
-const path = require("path"); // Tambahan untuk handling path
+const path = require("path");
 
 const app = express();
-app.use(express.json());
 
-// PENTING: Middleware untuk folder public harus di atas route API
-// Agar saat buka http://localhost:3000 langsung muncul index.html
+// Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, "public")));
 
 const upload = multer({ storage: multer.memoryStorage() });
 
 /* =========================
-   CONFIG S3
+   CONFIG AWS S3
 ========================= */
+require("dotenv").config();
 const s3 = new AWS.S3({
-  accessKeyId: "",
-  secretAccessKey: "",
-  region: "ap-southeast-2",
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  region: process.env.AWS_REGION,
 });
 
 /* =========================
@@ -34,63 +35,66 @@ const db = mysql.createConnection({
 
 db.connect((err) => {
   if (err) {
-    console.log("❌ Koneksi RDS gagal:", err);
+    console.error("❌ Koneksi RDS gagal:", err);
   } else {
     console.log("✅ Koneksi RDS berhasil 🚀");
   }
 });
 
 /* =========================
-   API
+   API ROUTES
 ========================= */
 
-// GET: Ambil semua laporan
+// GET: Ambil laporan
 app.get("/api/laporan", (req, res) => {
   db.query("SELECT * FROM laporan ORDER BY created_at DESC", (err, result) => {
-    if (err) return res.status(500).send(err);
+    if (err) return res.status(500).json({ error: err.message });
     res.json(result);
   });
 });
 
-// POST: Upload ke S3 + Simpan ke RDS
+// POST: Upload ke S3 + Insert ke RDS
 app.post("/api/laporan", upload.single("foto"), (req, res) => {
+  console.log("DEBUG: Menerima request POST /api/laporan");
+
   const { judul, deskripsi, lokasi } = req.body;
   const file = req.file;
 
-  if (!file) return res.status(400).send("File tidak ada");
+  if (!file) {
+    console.log("❌ Upload Gagal: File tidak ditemukan");
+    return res.status(400).send("File foto wajib diunggah!");
+  }
 
   const params = {
     Bucket: "cleancity-bucket-unik123",
     Key: Date.now() + "-" + file.originalname,
     Body: file.buffer,
     ContentType: file.mimetype,
+    ACL: "public-read", // Memastikan file bisa diakses publik
   };
 
+  console.log("DEBUG: Memulai proses upload ke S3...");
   s3.upload(params, (err, data) => {
     if (err) {
-      console.log("❌ S3 Upload Error:", err);
-      return res.status(500).send("Upload ke S3 gagal");
+      console.error("❌ S3 Upload Error:", err);
+      return res.status(500).send("Gagal upload ke S3: " + err.message);
     }
 
+    console.log("✅ Berhasil upload ke S3. URL:", data.Location);
+
     const fotoUrl = data.Location;
+    const sql =
+      "INSERT INTO laporan (judul, deskripsi, lokasi, foto_url, status) VALUES (?, ?, ?, ?, 'pending')";
 
-    db.query(
-      "INSERT INTO laporan (judul, deskripsi, lokasi, foto_url, status) VALUES (?, ?, ?, ?, 'pending')",
-      [judul, deskripsi, lokasi, fotoUrl],
-      (err) => {
-        if (err) {
-          console.log("❌ RDS Insert Error:", err);
-          return res.status(500).send("Gagal simpan ke database");
-        }
-        res.send("Laporan berhasil dikirim 🚀");
-      },
-    );
+    db.query(sql, [judul, deskripsi, lokasi, fotoUrl], (err) => {
+      if (err) {
+        console.error("❌ RDS Insert Error:", err);
+        return res.status(500).send("Gagal simpan ke database");
+      }
+      console.log("✅ Data berhasil disimpan ke RDS");
+      res.send("Laporan berhasil dikirim 🚀");
+    });
   });
-});
-
-// Route catch-all untuk melayani frontend (Opsional tapi berguna)
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
 const PORT = process.env.PORT || 3000;
