@@ -2,14 +2,12 @@
 <html lang="id">
   <head>
     <meta charset="UTF-8" />
-    <title>CleanCity - Lapor Sampah</title>
+    <title>CleanCity</title>
 
     <link
       href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
       rel="stylesheet"
     />
-
-    <!-- Leaflet CSS -->
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -29,6 +27,7 @@
       .card {
         border-radius: 15px;
         transition: 0.3s;
+        cursor: pointer;
       }
 
       .card:hover {
@@ -53,25 +52,35 @@
           <input type="hidden" name="lng" id="lng" />
 
           <div class="mb-3">
-            <label>Judul</label>
-            <input type="text" name="judul" class="form-control" required />
+            <input
+              type="text"
+              name="judul"
+              class="form-control"
+              placeholder="Judul"
+              required
+            />
           </div>
 
           <div class="mb-3">
-            <label>Deskripsi</label>
-            <textarea name="deskripsi" class="form-control"></textarea>
+            <textarea
+              name="deskripsi"
+              class="form-control"
+              placeholder="Deskripsi"
+            ></textarea>
           </div>
 
           <div class="mb-3">
-            <label>Alamat (opsional)</label>
-            <input type="text" name="lokasi" class="form-control" />
+            <input
+              type="text"
+              name="lokasi"
+              class="form-control"
+              placeholder="Alamat"
+            />
           </div>
 
-          <label class="mb-2">📍 Pilih lokasi di peta</label>
           <div id="map"></div>
 
           <div class="mb-3">
-            <label>Foto</label>
             <input type="file" name="foto" class="form-control" required />
           </div>
 
@@ -80,36 +89,55 @@
       </div>
 
       <!-- LIST -->
-      <h4>📋 Laporan</h4>
       <div id="listLaporan" class="row"></div>
     </div>
 
-    <!-- Leaflet JS -->
+    <!-- MODAL -->
+    <div class="modal fade" id="detailModal">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 id="modalTitle"></h5>
+            <button class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+
+          <div class="modal-body">
+            <img id="modalImage" class="img-fluid mb-3" />
+
+            <a id="downloadBtn" class="btn btn-primary mb-3" download>
+              Download
+            </a>
+
+            <p id="modalDesc"></p>
+            <p id="modalLokasi"></p>
+
+            <div id="modalMap" style="height: 300px"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-      const map = L.map("map").setView([-6.9, 107.6], 13); // Bandung
+      const map = L.map("map").setView([-6.9, 107.6], 13);
 
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "© OpenStreetMap",
-      }).addTo(map);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(
+        map,
+      );
 
       let marker;
 
-      map.on("click", function (e) {
+      map.on("click", (e) => {
         const { lat, lng } = e.latlng;
-
         document.getElementById("lat").value = lat;
         document.getElementById("lng").value = lng;
 
-        if (marker) {
-          marker.setLatLng(e.latlng);
-        } else {
-          marker = L.marker(e.latlng).addTo(map);
-        }
+        if (marker) marker.setLatLng(e.latlng);
+        else marker = L.marker(e.latlng).addTo(map);
       });
 
-      // SUBMIT
       const form = document.getElementById("formLaporan");
       const list = document.getElementById("listLaporan");
 
@@ -128,7 +156,6 @@
         loadData();
       });
 
-      // LOAD DATA
       async function loadData() {
         const res = await fetch("/api/laporan");
         const data = await res.json();
@@ -137,25 +164,43 @@
 
         data.forEach((item) => {
           list.innerHTML += `
-            <div class="col-md-4 mb-4">
-              <div class="card">
-                ${
-                  item.foto_url
-                    ? `<img src="${item.foto_url}" class="card-img-top">`
-                    : ""
-                }
-                <div class="card-body">
-                  <h5>${item.judul}</h5>
-                  <p>${item.deskripsi || "-"}</p>
-                  <small>📍 ${item.lokasi || "-"}</small><br>
-                  ${
-                    item.lat ? `<small>🌐 ${item.lat}, ${item.lng}</small>` : ""
-                  }
-                </div>
-              </div>
-            </div>
-          `;
+      <div class="col-md-4 mb-4">
+        <div class="card" onclick='openDetail(${JSON.stringify(item)})'>
+          <img src="${item.foto_url}" class="card-img-top">
+          <div class="card-body">
+            <h5>${item.judul}</h5>
+            <p>${item.deskripsi || "-"}</p>
+          </div>
+        </div>
+      </div>
+    `;
         });
+      }
+
+      function openDetail(item) {
+        document.getElementById("modalTitle").innerText = item.judul;
+        document.getElementById("modalDesc").innerText = item.deskripsi || "-";
+        document.getElementById("modalLokasi").innerText =
+          "📍 " + (item.lokasi || "-");
+
+        document.getElementById("modalImage").src = item.foto_url;
+        document.getElementById("downloadBtn").href = item.foto_url;
+
+        new bootstrap.Modal(document.getElementById("detailModal")).show();
+
+        setTimeout(() => {
+          document.getElementById("modalMap").innerHTML = "";
+
+          if (item.lat && item.lng) {
+            const map = L.map("modalMap").setView([item.lat, item.lng], 15);
+
+            L.tileLayer(
+              "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+            ).addTo(map);
+
+            L.marker([item.lat, item.lng]).addTo(map);
+          }
+        }, 300);
       }
 
       loadData();
