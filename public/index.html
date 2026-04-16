@@ -8,24 +8,29 @@
       rel="stylesheet"
     />
   </head>
+
   <body class="bg-light">
     <div class="container mt-5">
       <h2 class="text-center mb-4">🌍 CleanCity: Lapor Sampah Liar</h2>
 
+      <!-- FORM -->
       <div class="card p-4 shadow-sm mb-5">
-        <form action="/api/laporan" method="POST" enctype="multipart/form-data">
+        <form id="formLaporan">
           <div class="mb-3">
             <label class="form-label">Judul Laporan</label>
             <input type="text" name="judul" class="form-control" required />
           </div>
+
           <div class="mb-3">
-            <label class="form-label">Deskripsii</label>
+            <label class="form-label">Deskripsi</label>
             <textarea name="deskripsi" class="form-control"></textarea>
           </div>
+
           <div class="mb-3">
             <label class="form-label">Lokasi</label>
             <input type="text" name="lokasi" class="form-control" />
           </div>
+
           <div class="mb-3">
             <label class="form-label">Foto Sampah</label>
             <input
@@ -36,11 +41,68 @@
               required
             />
           </div>
+
           <button type="submit" class="btn btn-success w-100">
             Kirim Laporan
           </button>
         </form>
       </div>
+
+      <!-- LIST LAPORAN -->
+      <h4 class="mb-3">📋 Daftar Laporan</h4>
+      <div id="listLaporan" class="row"></div>
     </div>
+
+    <script>
+      const form = document.getElementById("formLaporan");
+      const list = document.getElementById("listLaporan");
+
+      // SUBMIT FORM
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+
+        const formData = new FormData(form);
+
+        const res = await fetch("/api/laporan", {
+          method: "POST",
+          body: formData,
+        });
+
+        alert(await res.text());
+        form.reset();
+        loadData();
+      });
+
+      // LOAD DATA
+      async function loadData() {
+        const res = await fetch("/api/laporan");
+        const data = await res.json();
+
+        list.innerHTML = "";
+
+        data.forEach((item) => {
+          list.innerHTML += `
+            <div class="col-md-4 mb-4">
+              <div class="card shadow-sm">
+                ${
+                  item.foto_url
+                    ? `<img src="${item.foto_url}" class="card-img-top" style="height:200px; object-fit:cover;">`
+                    : ""
+                }
+                <div class="card-body">
+                  <h5>${item.judul}</h5>
+                  <p>${item.deskripsi || "-"}</p>
+                  <small>📍 ${item.lokasi || "-"}</small><br>
+                  <span class="badge bg-warning mt-2">${item.status}</span>
+                </div>
+              </div>
+            </div>
+          `;
+        });
+      }
+
+      // LOAD SAAT PAGE DIBUKA
+      loadData();
+    </script>
   </body>
 </html>
