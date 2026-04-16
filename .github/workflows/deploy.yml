@@ -19,4 +19,4 @@ jobs:
             cd cleancity
             git pull origin main
             npm install
-            pm2 restart cleancity
+            /usr/local/bin/pm2 restart cleancity
